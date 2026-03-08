@@ -1031,8 +1031,7 @@ function prepareFillData(tabNum) {
     const items = [
       { label: 'Refill UOM',
         dsKey: 'select-entity-dropdown-refill_uom_name_vn', type: 'react-select',
-        value: row['Refill UOM'],
-        waitForDs: 'select-entity-dropdown-store_uom_name_vn', waitAfterMs: 800 },
+        value: row['Refill UOM'] },
 
       { label: 'Store Order UOM',
         dsKey: 'select-entity-dropdown-store_uom_name_vn', type: 'react-select',
@@ -1289,18 +1288,22 @@ async function __injectedFill(fillItems) {
       target;
     trigger.click();
 
-    // ── 2. Poll until search input is available and focused ───────────────────
+    // ── 2. Find search input SCOPED to THIS dropdown's container ─────────────
+    // NEVER use document.activeElement — it can point to the previous dropdown's
+    // input that's still in DOM (e.g. Refill UOM's input while we're filling
+    // Store Order UOM), causing us to type into the wrong field entirely.
+    // We scope the lookup strictly to target's own subtree and wait for the
+    // menu to be OPEN (getVisibleOpts > 0) before accepting the input.
     let searchInput = null;
     for (let i = 0; i < 40; i++) {
-      const active = document.activeElement;
-      if (active && active.tagName === 'INPUT'
-          && active.type !== 'hidden' && active.type !== 'checkbox' && active.type !== 'radio') {
-        searchInput = active; break;
+      // Wait for THIS dropdown's menu to open first
+      const opts = getVisibleOpts();
+      if (opts.length > 0) {
+        // Now find input strictly inside target's own container
+        const scopeEl = target.closest('[class*="-container"], [class*="__container"]') || target;
+        const inp = scopeEl.querySelector('input[type="text"], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type])');
+        if (inp) { searchInput = inp; break; }
       }
-      const inp = target.querySelector('input[type="text"], input:not([type]), input[type="search"]')
-               || target.closest('[class*="-container"], [class*="__container"]')
-                        ?.querySelector('input[type="text"], input:not([type])');
-      if (inp) { searchInput = inp; break; }
       await sleep(30);
     }
     if (!searchInput) {
@@ -1308,12 +1311,9 @@ async function __injectedFill(fillItems) {
       return false;
     }
 
-    // ── 3. Click input, then poll until the option list is populated ──────────
+    // ── 3. Focus the input (menu already open from step 2 poll) ──────────────
+    searchInput.focus();
     searchInput.click();
-    for (let i = 0; i < 40; i++) {
-      if (getVisibleOpts().length > 0) break;
-      await sleep(30);
-    }
 
     // ── 4. Type the search value ──────────────────────────────────────────────
     await typeIntoInput(searchInput, rawValue);
@@ -1340,11 +1340,7 @@ async function __injectedFill(fillItems) {
       if (pick) {
         await clickOption(pick);
         clicked = true;
-        // ── 7. Confirm: poll until the control shows the selected value ───────
-        for (let w = 0; w < 30; w++) {
-          if (getControlValue(target).includes(normVal)) break;
-          await sleep(40);
-        }
+        // clickOption polled menu-gone + fired Tab/blur — value is committed
       }
     }
 
@@ -1857,8 +1853,10 @@ async function __injectedFill(fillItems) {
       await sleep(200);
     } else if (item.waitAfterMs) {
       await sleep(item.waitAfterMs);
+    } else if (type === 'react-select') {
+      await sleep(80); // let React flush state before next field's step 0
     } else if (isDropdown) {
-      // no extra delay — step 0 of next fillReactSelect handles cleanup
+      // pattern types: internal timing handles it
     }
     // else: plain fields — no delay
   }
@@ -2077,16 +2075,24 @@ btnReload.addEventListener('click', () => loadAllProducts(true));
 // ── Reload from server then restore selected product ─────────────────────────
 async function reloadAndRestore() {
   const savedName = selectedRow ? getDisplayName(selectedRow) : null;
+  const savedTab  = detailTab; // preserve current tab
   try {
     const rows = await fetchFromServer();
     applyRows(rows);
-    // Re-select the same product from fresh data
+    // Re-select same product, preserving current tab view
     if (savedName) {
       const row = allRows.find(r => getDisplayName(r) === savedName);
-      if (row) selectRow(row, null);
+      if (row) {
+        detailTab = savedTab;
+        selectRow(row, null, { preserveTab: true });
+      }
     }
-    // Update cache
-    chrome.storage.local.set({ [CACHE_KEY]: { rows: allRows, ts: Date.now() } });
+    // Update cache + persist selected name & tab so next popup open restores correctly
+    chrome.storage.local.set({
+      [CACHE_KEY]: { rows: allRows, ts: Date.now() },
+      [CACHE_SEL]: savedName || '',
+      [CACHE_TAB]: savedTab,
+    });
   } catch (_) { /* silent — data already saved to sheet */ }
 }
 
