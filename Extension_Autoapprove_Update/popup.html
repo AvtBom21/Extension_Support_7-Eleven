@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bulk Approve / Reject</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      width: 360px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #cba6f7;
+      letter-spacing: 0.02em;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #a6adc8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    textarea,
+    select,
+    input[type="number"] {
+      width: 100%;
+      background: #313244;
+      border: 1px solid #45475a;
+      border-radius: 6px;
+      color: #cdd6f4;
+      padding: 7px 10px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+      resize: vertical;
+    }
+
+    textarea:focus,
+    select:focus,
+    input[type="number"]:focus {
+      border-color: #cba6f7;
+    }
+
+    textarea {
+      min-height: 64px;
+    }
+
+    .row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .row3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Dry-run toggle */
+    .dryrun-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dryrun-row input[type="checkbox"] {
+      width: 15px;
+      height: 15px;
+      accent-color: #f9e2af;
+      cursor: pointer;
+    }
+
+    .dryrun-row span {
+      font-size: 12px;
+      color: #f9e2af;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s, opacity 0.15s;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #btnStart {
+      background: #a6e3a1;
+      color: #1e1e2e;
+    }
+
+    #btnStart:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+
+    #btnStop {
+      background: #f38ba8;
+      color: #1e1e2e;
+    }
+
+    #btnStop:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+
+    /* Status badge */
+    #statusBadge {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #313244;
+      color: #a6adc8;
+      letter-spacing: 0.04em;
+    }
+
+    #statusBadge.running {
+      background: #1e4620;
+      color: #a6e3a1;
+    }
+
+    #statusBadge.dryrun {
+      background: #3d3010;
+      color: #f9e2af;
+    }
+
+    #statusBadge.stopped {
+      background: #3d1010;
+      color: #f38ba8;
+    }
+
+    /* Log */
+    #logLabel {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #clearLog {
+      font-size: 10px;
+      background: none;
+      border: 1px solid #45475a;
+      color: #6c7086;
+      padding: 2px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      flex: unset;
+    }
+
+    #clearLog:hover {
+      color: #cdd6f4;
+    }
+
+    #log {
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 11px;
+      font-family: "Cascadia Code", "Fira Code", monospace;
+      height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #a6adc8;
+    }
+
+    #log .l-ok {
+      color: #a6e3a1;
+    }
+
+    #log .l-warn {
+      color: #f9e2af;
+    }
+
+    #log .l-err {
+      color: #f38ba8;
+    }
+
+    #log .l-info {
+      color: #89b4fa;
+    }
+
+    #log .l-dry {
+      color: #f9e2af;
+    }
+
+    #log .l-summary {
+      color: #cba6f7;
+      font-weight: bold;
+    }
+
+    #log .l-card {
+      color: #cdd6f4;
+      font-weight: 600;
+    }
+
+    #log .l-sep {
+      color: #45475a;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>&#x2714; Bulk Final Approve / Reject</h1>
+
+  <!-- Created By -->
+  <div class="section">
+    <label for="createdBy">Created By (comma or newline separated)</label>
+    <textarea id="createdBy" placeholder="e.g. alice@example.com, bob&#10;charlie@example.com"></textarea>
+  </div>
+
+  <!-- Match Mode + Status -->
+  <div class="row2">
+    <div class="section">
+      <label for="matchMode">Match Mode</label>
+      <select id="matchMode">
+        <option value="contains" selected>Contains</option>
+        <option value="exact">Exact</option>
+      </select>
+    </div>
+    <div class="section">
+      <label for="statusFilter">Approval Status</label>
+      <select id="statusFilter">
+        <option value="waiting_to_approve" selected>Waiting To Approve</option>
+        <option value="all_pending">All Pending</option>
+        <option value="any">Any (ignore status)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Action + Limit + Delay -->
+  <div class="row3">
+    <div class="section">
+      <label for="action">Action</label>
+      <select id="action">
+        <option value="final_approve" selected>Final Approve</option>
+        <option value="final_reject">Final Reject</option>
+        <option value="apply_now">Apply Now</option>
+        <option value="unfinal_approve">UnFinal Approve</option>
+      </select>
+    </div>
+    <div class="section">
+      <label for="limit">Limit (0=all)</label>
+      <input id="limit" type="number" min="0" value="0" />
+    </div>
+    <div class="section">
+      <label for="delay">Delay (seconds)</label>
+      <input id="delay" type="number" min="1" value="1" />
+    </div>
+  </div>
+
+  <!-- Dry Run -->
+  <div class="dryrun-row">
+    <input id="dryRun" type="checkbox" />
+    <span>Dry-run / Preview — highlight matches without clicking</span>
+  </div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button id="btnStart">&#9654; Start</button>
+    <button id="btnStop" disabled>&#9646;&#9646; Stop</button>
+  </div>
+
+  <!-- Status -->
+  <div id="statusBadge">IDLE</div>
+
+  <!-- Log -->
+  <div class="section">
+    <div id="logLabel">
+      <label>Log</label>
+      <button id="clearLog">Clear</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

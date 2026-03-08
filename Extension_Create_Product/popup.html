@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product Lookup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:         #0d1117;
+      --surface:    #161b22;
+      --surface2:   #1c2330;
+      --border:     #2d3748;
+      --border2:    #374151;
+      --accent:     #58a6ff;
+      --accent2:    #1f6feb;
+      --accent-bg:  rgba(88,166,255,0.08);
+      --accent-glow:rgba(88,166,255,0.18);
+      --text:       #e6edf3;
+      --text2:      #8b949e;
+      --text3:      #6e7681;
+      --green:      #3fb950;
+      --yellow:     #d29922;
+      --red:        #f85149;
+      --r:          10px;
+      --r-sm:       6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 480px;
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── LOADING BAR ─────────── */
+    #loadingBar {
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent), var(--accent2));
+      background-size: 200% 100%;
+      position: fixed; top: 0; left: 0;
+      width: 100%; z-index: 999;
+      animation: loadSlide 1.2s linear infinite;
+      display: none;
+    }
+    #loadingBar.active { display: block; }
+    @keyframes loadSlide {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── HEADER ──────────────── */
+    .header {
+      display: flex; flex-direction: column;
+      padding: 9px 12px 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .header-top {
+      display: flex; align-items: center; gap: 9px;
+      padding-bottom: 7px;
+    }
+    .header-icon {
+      width: 26px; height: 26px;
+      background: linear-gradient(135deg, var(--accent2), #0550ae);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(31,111,235,0.35);
+    }
+    .header-icon svg { width: 13px; height: 13px; }
+    .header-title {
+      font-size: 13px; font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+    .header-right {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .badge-blue { background: var(--accent-bg); border: 1px solid rgba(88,166,255,.3); color: var(--accent); }
+    .badge-muted { background: transparent; border: 1px solid var(--border2); color: var(--text3); }
+    /* status strip inside header */
+    .header-status {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 2px 6px;
+      border-top: 1px solid var(--border);
+      font-size: 10.5px; color: var(--text3);
+      min-height: 22px;
+    }
+
+    /* ── PANEL ───────────────── */
+    .panel { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+
+    /* ── DROPDOWN ────────────── */
+    .dd-wrap { position: relative; }
+
+    .dd-trigger {
+      width: 100%;
+      display: flex; align-items: center; gap: 9px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 9px 12px;
+      cursor: pointer; user-select: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .dd-trigger:hover:not(.dd-disabled) { border-color: var(--border2); }
+    .dd-trigger.dd-open {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+      border-radius: var(--r) var(--r) 0 0;
+    }
+    .dd-trigger.dd-disabled { cursor: default; }
+
+    .dd-icon { color: var(--text3); display: flex; flex-shrink: 0; }
+    .dd-icon svg { width: 14px; height: 14px; }
+
+    .dd-label {
+      flex: 1; font-size: 13px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dd-label.ph { color: var(--text3); }
+
+    /* skeleton shimmer */
+    .skeleton-bar {
+      height: 11px; width: 55%; border-radius: 4px;
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.3s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    .dd-chevron {
+      color: var(--text3); display: flex; flex-shrink: 0;
+      transition: transform .2s;
+    }
+    .dd-chevron svg { width: 14px; height: 14px; }
+    .dd-trigger.dd-open .dd-chevron { transform: rotate(180deg); }
+
+    /* ── DROPDOWN MENU ───────── */
+    .dd-menu {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-top: none;
+      border-radius: 0 0 var(--r) var(--r);
+      box-shadow: 0 12px 32px rgba(0,0,0,.55);
+      display: none; flex-direction: column;
+    }
+    .dd-menu.visible { display: flex; animation: dropIn .14s ease; }
+    @keyframes dropIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+
+    .dd-search-row {
+      padding: 7px 10px;
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .dd-search-row svg { width: 13px; height: 13px; color: var(--text3); flex-shrink: 0; }
+    .dd-search {
+      flex: 1; background: transparent; border: none; outline: none;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12.5px; color: var(--text);
+      caret-color: var(--accent);
+    }
+    .dd-search::placeholder { color: var(--text3); }
+    .dd-count { font-size: 10.5px; color: var(--text3); white-space: nowrap; }
+
+    .dd-list {
+      max-height: 206px; overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
+    }
+    .dd-list::-webkit-scrollbar { width: 4px; }
+    .dd-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .dd-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    .dd-item:last-child { border-bottom: none; }
+    .dd-item:hover { background: var(--surface2); }
+    .dd-item.dd-active { background: var(--accent-bg); }
+
+    .dd-item-name {
+      font-size: 12.5px; font-weight: 500; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .dd-item-meta {
+      font-size: 11px; color: var(--text3);
+      display: flex; align-items: center; gap: 5px;
+      overflow: hidden;
+    }
+    .dd-item-meta span {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 140px;
+    }
+    .sep { color: var(--border2); flex-shrink: 0; }
+
+    .dd-empty {
+      padding: 16px; text-align: center;
+      font-size: 12px; color: var(--text3);
+    }
+
+    /* Product ID done badge */
+    .dd-has-pid { border-left: 2px solid var(--green); }
+    .dd-has-pid .dd-item-name { color: var(--text); }
+    .pid-badge {
+      display: inline-flex; align-items: center;
+      margin-left: 7px;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px; font-weight: 600;
+      background: rgba(63,185,80,.13);
+      color: var(--green);
+      border: 1px solid rgba(63,185,80,.3);
+      white-space: nowrap;
+      vertical-align: middle;
+      letter-spacing: 0.2px;
+    }
+
+    /* ── DETAIL CARD ─────────── */
+    .detail-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    .detail-top {
+      padding: 9px 12px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .detail-label {
+      font-size: 10.5px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .6px;
+      color: var(--text3);
+    }
+    .btn-row { display: flex; gap: 5px; }
+    .btn {
+      display: flex; align-items: center; gap: 4px;
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--text2);
+      border-radius: var(--r-sm);
+      padding: 5px 9px;
+      font-size: 11px; font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .btn svg { width: 11px; height: 11px; }
+    .btn:hover { background: var(--surface); border-color: var(--text3); color: var(--text); }
+    .btn.success { border-color: var(--green) !important; color: var(--green) !important; }
+    .btn.saving  { border-color: var(--accent) !important; color: var(--accent) !important; opacity:.8; cursor:not-allowed; pointer-events:none; }
+    .btn.saving svg.spin { animation: spinIcon .7s linear infinite; }
+    @keyframes spinIcon { to { transform: rotate(360deg); } }
+
+    .detail-body {
+      max-height: 200px; overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border2) transparent;
+    }
+    .detail-body::-webkit-scrollbar { width: 4px; }
+    .detail-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .detail-empty {
+      padding: 28px 20px; text-align: center;
+      color: var(--text3); font-size: 12px;
+    }
+    .detail-empty svg {
+      width: 30px; height: 30px; color: var(--border2);
+      display: block; margin: 0 auto 10px;
+    }
+    .detail-empty p { color: var(--text3); }
+
+    .field {
+      display: grid;
+      grid-template-columns: 152px 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .field:last-child { border-bottom: none; }
+    .field-k {
+      padding: 7px 10px;
+      font-size: 11px; font-weight: 600;
+      color: var(--text3);
+      background: var(--surface2);
+      border-right: 1px solid var(--border);
+      word-break: break-word; line-height: 1.45;
+    }
+    .field-v {
+      padding: 7px 10px;
+      font-size: 12px; color: var(--text);
+      white-space: pre-wrap; word-break: break-word;
+      line-height: 1.5;
+    }
+    .field-v.empty { color: var(--text3); font-style: italic; }
+    .field-v a { color: var(--accent); text-decoration: none; }
+    .field-v a:hover { text-decoration: underline; }
+    /* Sub-field indicators */
+    .field-tag { display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;margin-left:4px;vertical-align:middle; }
+    .tag-region { background:#3fb950;box-shadow:0 0 5px rgba(63,185,80,.5); }
+    .tag-tier   { background:#d29922;box-shadow:0 0 5px rgba(210,153,34,.5); }
+    .tag-kv     { background:var(--accent);box-shadow:0 0 5px rgba(88,166,255,.4); }
+    .field[data-sub="1"] .field-k {
+      padding-left:18px;color:var(--text2);font-weight:500;
+      border-left:2px solid var(--border2);background:var(--surface);
+    }
+    .field[data-sub="1"][data-type="region"] .field-k { border-left-color:rgba(63,185,80,.45); }
+    .field[data-sub="1"][data-type="tier"]   .field-k { border-left-color:rgba(210,153,34,.5); }
+    .field[data-sub="1"][data-type="kv"]     .field-k { border-left-color:rgba(88,166,255,.35); }
+    .field[data-sub="1"][data-type="bool"]   .field-k { border-left-color:rgba(168,85,247,.45); }
+    .field[data-sub="1"][data-type="tier"] .field-v {
+      color:var(--green);font-weight:500;font-variant-numeric:tabular-nums;
+    }
+    /* Yes/No pills */
+    .bool-pill {
+      display:inline-block;padding:2px 9px;border-radius:20px;
+      font-size:11px;font-weight:700;letter-spacing:0.3px;
+    }
+    .bool-yes { background:rgba(63,185,80,.15);color:#3fb950;border:1px solid rgba(63,185,80,.3); }
+    .bool-no  { background:rgba(248,81,73,.13);color:#f85149;border:1px solid rgba(248,81,73,.25); }
+
+    .header-right { display:flex; align-items:center; gap:6px; }
+    .btn-reload {
+      background: none; border: 1px solid var(--border2);
+      border-radius: var(--r-sm); padding: 4px 6px;
+      color: var(--text3); cursor: pointer; display: flex;
+      align-items: center; transition: all 0.15s;
+    }
+    .btn-reload svg { width:13px; height:13px; display:block; }
+    .btn-reload:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+    .btn-reload:disabled { opacity:.4; cursor:not-allowed; }
+    .btn-reload:not(:disabled):active svg { animation: spin .4s linear; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ── DETAIL TAB NAV ──────── */
+    .detail-tabnav {
+      display: none;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      padding: 0 8px;
+      gap: 0;
+    }
+    .detail-tabnav.visible { display: flex; }
+    .dtab {
+      padding: 7px 10px 6px;
+      font-size: 10.5px; font-weight: 600;
+      background: none; border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text3); cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: color .15s, border-color .15s;
+      display: flex; align-items: center; gap: 4px;
+      white-space: nowrap;
+    }
+    .dtab:hover { color: var(--text2); }
+    .dtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .dtab-cnt {
+      font-size: 9.5px; font-weight: 700;
+      background: var(--accent-bg);
+      border: 1px solid rgba(88,166,255,.25);
+      color: var(--accent);
+      border-radius: 8px;
+      padding: 0px 5px;
+      min-width: 16px; text-align: center;
+      display: none;
+    }
+    .dtab-cnt.has-data { display: inline-block; }
+    .dtab:not(.active) .dtab-cnt { background: transparent; border-color: var(--border2); color: var(--text3); }
+    .editable-hint {
+      font-size: 9px; color: var(--yellow, #e3b341);
+      vertical-align: middle; margin-left: 3px;
+    }
+    .barcode-edit {
+      width: 100%; background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border2); border-radius: var(--r-sm);
+      padding: 3px 7px; font-family: 'DM Sans', sans-serif; font-size: 12px;
+      outline: none; box-sizing: border-box;
+    }
+    .barcode-edit:focus { border-color: var(--accent); }
+
+    /* ── FILL FORM CARD ──────── */
+    .fill-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--accent2);
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .fill-top {
+      padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .fill-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--accent);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .fill-title svg { width:13px; height:13px; }
+    .fill-hint { font-size: 10px; color: var(--text3); }
+    .fill-tabs {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 5px; padding: 8px 10px;
+    }
+    .fill-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: var(--r-sm);
+      padding: 7px 4px 6px;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      cursor: pointer; transition: all 0.15s; color: var(--text2);
+    }
+    .fill-btn:hover:not(:disabled) {
+      border-color: var(--accent2); background: rgba(31,111,235,.12);
+      color: var(--accent);
+    }
+    .fill-btn:active:not(:disabled) { transform: scale(.97); }
+    .fill-btn:disabled { opacity: .38; cursor: not-allowed; }
+    .fill-btn svg { width:13px; height:13px; }
+    .fill-btn-label { font-size: 10px; font-weight: 700; }
+    .fill-btn-sub   { font-size: 9px; color: var(--text3); text-align: center; }
+    .fill-result {
+      margin: 0 10px 10px;
+      border-radius: var(--r-sm);
+      overflow: hidden; display: none;
+    }
+    .fill-result.visible { display: block; }
+    .fill-result-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; font-size: 11px;
+    }
+    .fill-result-row.ok  { background: rgba(63,185,80,.08); color: #3fb950; }
+    .fill-result-row.err { background: rgba(248,81,73,.08);  color: #f85149; }
+    .fill-result-row svg { width:12px; height:12px; flex-shrink:0; }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      flex-shrink: 0; background: var(--text3);
+    }
+    .status-dot.ok    { background: var(--green); }
+    .status-dot.err   { background: var(--red); }
+    .status-dot.busy  { background: var(--accent); animation: blink 1s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+  </style>
+</head>
+<body>
+
+<div id="loadingBar"></div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-icon">
+      <svg viewBox="0 0 20 20" fill="white"><path d="M3 5h14v2H3V5zm0 4h14v2H3V9zm0 4h9v2H3v-2z"/></svg>
+    </div>
+    <span class="header-title">Product Lookup</span>
+    <div class="header-right">
+      <span id="totalBadge" class="badge badge-muted">Loading…</span>
+      <button id="btnReload" class="btn-reload" title="Tải lại danh sách">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M14.66 5.34A7 7 0 1 0 17 10h-2a5 5 0 1 1-1.76-3.83L11 8h6V2l-2.34 3.34z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot busy" id="sDot"></div>
+    <span id="sText">Đang tải danh sách sản phẩm…</span>
+  </div>
+</div>
+
+<!-- MAIN PANEL -->
+<div class="panel">
+
+  <!-- DROPDOWN -->
+  <div class="dd-wrap" id="ddWrap">
+    <div class="dd-trigger dd-disabled" id="ddTrigger">
+      <span class="dd-icon">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 3a6 6 0 1 1 0 12A6 6 0 0 1 9 3zm0 2a4 4 0 1 0 0 8A4 4 0 0 0 9 5zm7.12 10.71 1.41 1.42-1.41 1.41-1.42-1.41 1.42-1.42z"/></svg>
+      </span>
+      <span class="dd-label ph" id="ddLabel"><span class="skeleton-bar"></span></span>
+      <span class="dd-chevron">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5z"/></svg>
+      </span>
+    </div>
+
+    <div class="dd-menu" id="ddMenu">
+      <div class="dd-search-row">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 3a6 6 0 1 1 0 12A6 6 0 0 1 9 3zm0 2a4 4 0 1 0 0 8A4 4 0 0 0 9 5zm7.12 10.71 1.41 1.42-1.41 1.41-1.42-1.41 1.42-1.42z"/></svg>
+        <input class="dd-search" id="ddSearch" type="text" placeholder="Tìm kiếm sản phẩm…" autocomplete="off" spellcheck="false" />
+        <span class="dd-count" id="ddCount"></span>
+      </div>
+      <div class="dd-list" id="ddList"></div>
+    </div>
+  </div>
+
+  <!-- DETAIL CARD -->
+  <div class="detail-card">
+    <div class="detail-top">
+      <span class="detail-label">Chi tiết sản phẩm</span>
+      <div class="btn-row">
+        <button class="btn" id="btnCopyJson">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 2a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V7.83L13.17 5H11V3H7zm4 1.41L13.59 6H12a1 1 0 0 1-1-1V3.41zm-4-.41h3v2a2 2 0 0 0 2 2h2v7H7V4z"/></svg>
+          Copy JSON
+        </button>
+        <button class="btn" id="btnCopySummary">
+          <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 5h12v2H4zm0 4h12v2H4zm0 4h7v2H4z"/></svg>
+          Summary
+        </button>
+      </div>
+    </div>
+    <div class="detail-tabnav" id="detailTabNav">
+      <button class="dtab active" data-tab="1">Tab 1<span class="dtab-cnt" id="dtabCnt1"></span></button>
+      <button class="dtab" data-tab="2">Tab 2<span class="dtab-cnt" id="dtabCnt2"></span></button>
+      <button class="dtab" data-tab="3">Tab 3<span class="dtab-cnt" id="dtabCnt3"></span></button>
+      <button class="dtab" data-tab="4">Tab 4<span class="dtab-cnt" id="dtabCnt4"></span></button>
+    </div>
+    <div class="detail-body" id="detail">
+      <div class="detail-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6M9 13h4"/></svg>
+        <p>Chọn một sản phẩm từ dropdown để xem chi tiết</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILL FORM CARD -->
+  <div class="fill-card">
+    <div class="fill-top">
+      <div class="fill-title">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M17 1H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zM7 15H5v-2h2v2zm0-4H5V9h2v2zm0-4H5V5h2v2zm8 8H9v-2h6v2zm0-4H9V9h6v2zm0-4H9V5h6v2z"/></svg>
+        Điền vào Form
+      </div>
+      <span class="fill-hint">Click tab để điền tự động</span>
+    </div>
+    <div class="fill-tabs">
+      <button class="fill-btn" id="btnFill1" disabled>
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4h12v2H4zm0 4h12v2H4zm0 4h8v2H4z"/></svg>
+        <span class="fill-btn-label">Tab 1</span>
+        <span class="fill-btn-sub">Basic Info</span>
+      </button>
+      <button class="fill-btn" id="btnFill2" disabled>
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2zm1 11H9V9h2v4zm0-6H9V5h2v2z"/></svg>
+        <span class="fill-btn-label">Tab 2</span>
+        <span class="fill-btn-sub">UOM Info</span>
+      </button>
+      <button class="fill-btn" id="btnFill3" disabled>
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 4a1 1 0 0 1 1-1h3v2H5v10h10V5h-2V3h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4zm4 3h6v2H7V7zm0 4h6v2H7v-2z"/></svg>
+        <span class="fill-btn-label">Tab 3</span>
+        <span class="fill-btn-sub">Pattern</span>
+      </button>
+      <button class="fill-btn" id="btnFill4" disabled>
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 3h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v10h12V5H4zm2 2h3v2H6V7zm5 0h3v2h-3V7zm-5 4h3v2H6v-2zm5 0h3v2h-3v-2z"/></svg>
+        <span class="fill-btn-label">Tab 4</span>
+        <span class="fill-btn-sub">Retail Price</span>
+      </button>
+    </div>
+    <div class="fill-result" id="fillResult"></div>
+  </div>
+
+</div>
+
+
+
+<script src="popup.js"></script>
+</body>
+</html>
