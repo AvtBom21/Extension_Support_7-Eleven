@@ -1167,7 +1167,11 @@ async function __injectedFill(fillItems) {
 
   /* ── Fire the full mouse-event chain required by React dropdowns ─────────── */
   // A bare click() skips the mousedown handler that React uses to commit an option.
-  async function clickOption(el) {
+  // IMPORTANT: do NOT synthesize Tab here. In this form, sending Tab right after
+  // selecting Refill UOM can move focus into Store Order UOM before React fully
+  // commits the previous dropdown state, which causes the next step to interact
+  // with the wrong control and bounce back to the previous field.
+  async function clickOption(el, { waitForMenuClose = true } = {}) {
     el.scrollIntoView({ block: 'nearest' });
     const a = { bubbles: true, cancelable: true };
     el.dispatchEvent(new PointerEvent('pointerover',  a));
@@ -1180,28 +1184,16 @@ async function __injectedFill(fillItems) {
     el.dispatchEvent(new MouseEvent ('mouseup',       a));
     el.dispatchEvent(new MouseEvent ('click',         a));
 
-    // ── Wait until the option menu is GONE from the DOM / hidden ─────────────
-    const maxWait = 3000;
-    const start   = Date.now();
-    while (Date.now() - start < maxWait) {
-      await sleep(10);
-      const anyVisible = [
-        ...document.querySelectorAll('[class*="-option"], [class*="__option"], [role="option"]'),
-      ].some(o => o.offsetParent !== null);
-      if (!anyVisible) break;
-    }
-
-    // ── Commit the selection so it survives a tab-switch ─────────────────────
-    // The search input still has focus after the list closes. If the page loses
-    // OS focus (tab-switch, popup reopens) BEFORE we blur, the component's onBlur
-    // handler can treat the state as "aborted" and revert the value.
-    // Firing Tab then blur hand-off focus cleanly and triggers the form's
-    // onCommit / onChange path inside React.
-    const focused = document.activeElement;
-    if (focused && focused.tagName === 'INPUT') {
-      focused.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Tab', keyCode: 9 }));
-      focused.dispatchEvent(new KeyboardEvent('keyup',   { bubbles: true, cancelable: true, key: 'Tab', keyCode: 9 }));
-      focused.blur();
+    if (waitForMenuClose) {
+      const maxWait = 3000;
+      const start   = Date.now();
+      while (Date.now() - start < maxWait) {
+        await sleep(10);
+        const anyVisible = [
+          ...document.querySelectorAll('[class*="-option"], [class*="__option"], [role="option"]'),
+        ].some(o => o.offsetParent !== null);
+        if (!anyVisible) break;
+      }
     }
   }
 
@@ -1242,14 +1234,21 @@ async function __injectedFill(fillItems) {
     rawValue = String(rawValue).trim();
     const normVal = norm(rawValue);
 
-    // Helper: collect visible option elements
-    function getVisibleOpts() {
+    // Prefer the actual React-Select root nearest this field.
+    const selectRoot = target.querySelector('.Select')
+      || target.closest('.Select')
+      || target;
+
+    // Helper: collect visible option elements. When a menu element is supplied,
+    // ONLY search inside that menu to avoid picking options from the previous dropdown.
+    function getVisibleOpts(menuEl = null) {
+      const scope = menuEl || document;
       return [
-        ...document.querySelectorAll('[class*="-option"]'),
-        ...document.querySelectorAll('[class*="__option"]'),
-        ...document.querySelectorAll('[id*="-option-"]'),
-        ...document.querySelectorAll('[role="option"]'),
-        ...document.querySelectorAll('li[class*="option"], li[class*="item"]'),
+        ...scope.querySelectorAll('[class*="-option"]'),
+        ...scope.querySelectorAll('[class*="__option"]'),
+        ...scope.querySelectorAll('[id*="-option-"]'),
+        ...scope.querySelectorAll('[role="option"]'),
+        ...scope.querySelectorAll('li[class*="option"], li[class*="item"]'),
       ].filter((el, idx, arr) =>
         arr.indexOf(el) === idx
         && el.offsetParent !== null
@@ -1259,15 +1258,23 @@ async function __injectedFill(fillItems) {
       );
     }
 
-    // Helper: read what the control currently displays as its selected value
+    // Helper: locate the menu that belongs to THIS select.
+    function getOwnMenu() {
+      return selectRoot.querySelector('.Select-menu-outer, .Select-menu, [class*="-menu"], [class*="__menu"]')
+          || target.querySelector('.Select-menu-outer, .Select-menu, [class*="-menu"], [class*="__menu"]');
+    }
+
+    // Helper: read the selected value shown by this control.
     function getControlValue(t) {
-      const ctrl = t.querySelector('[class*="-singleValue"], [class*="__single-value"], [class*="SingleValue"]')
+      const ctrl = t.querySelector('.Select-value-label')
+                || t.querySelector('[id*="--value-item"]')
+                || t.querySelector('[class*="-singleValue"], [class*="__single-value"], [class*="SingleValue"]')
                 || t.querySelector('[class*="-value-container"] [class*="value"]')
                 || t.querySelector('[class*="selector-selection-item"]');
       return norm(ctrl ? ctrl.textContent : '');
     }
 
-    // ── 0. Poll until all option lists are gone (prev dropdown fully closed) ──
+    // ── 0. Close any previous dropdown completely ─────────────────────────────
     {
       const prev = document.activeElement;
       if (prev && prev !== document.body) {
@@ -1275,81 +1282,91 @@ async function __injectedFill(fillItems) {
         prev.blur();
       }
       document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      for (let w = 0; w < 30; w++) {
+      for (let w = 0; w < 40; w++) {
         if (!getVisibleOpts().length) break;
-        await sleep(10);
+        await sleep(15);
       }
     }
 
-    // ── 1. Click trigger to open the menu ─────────────────────────────────────
+    // ── 1. Open THIS dropdown ────────────────────────────────────────────────
     const trigger =
-      target.querySelector('[class*="-control"], [class*="__control"], [class*="Select-control"]') ||
+      selectRoot.querySelector('.Select-control, [class*="-control"], [class*="__control"]') ||
       target.querySelector('[class*="selector"], [class*="selection"], [class*="trigger"]') ||
       target;
-    trigger.click();
 
-    // ── 2. Find search input SCOPED to THIS dropdown's container ─────────────
-    // NEVER use document.activeElement — it can point to the previous dropdown's
-    // input that's still in DOM (e.g. Refill UOM's input while we're filling
-    // Store Order UOM), causing us to type into the wrong field entirely.
-    // We scope the lookup strictly to target's own subtree and wait for the
-    // menu to be OPEN (getVisibleOpts > 0) before accepting the input.
+    trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    trigger.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true }));
+    trigger.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true }));
+
+    // ── 2. Wait for THIS dropdown's input + menu ─────────────────────────────
     let searchInput = null;
-    for (let i = 0; i < 40; i++) {
-      // Wait for THIS dropdown's menu to open first
-      const opts = getVisibleOpts();
-      if (opts.length > 0) {
-        // Now find input strictly inside target's own container
-        const scopeEl = target.closest('[class*="-container"], [class*="__container"]') || target;
-        const inp = scopeEl.querySelector('input[type="text"], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type])');
-        if (inp) { searchInput = inp; break; }
+    let ownMenu = null;
+    for (let i = 0; i < 50; i++) {
+      ownMenu = getOwnMenu();
+      searchInput = selectRoot.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
+                 || target.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])');
+      if (searchInput && ownMenu && ownMenu.offsetParent !== null) break;
+      await sleep(30);
+    }
+    if (!searchInput) return false;
+
+    // Some react-select v1 menus render lazily after focus.
+    searchInput.focus();
+    searchInput.click();
+    for (let i = 0; i < 20; i++) {
+      ownMenu = getOwnMenu();
+      if (ownMenu && ownMenu.offsetParent !== null) break;
+      await sleep(20);
+    }
+
+    // ── 3. Type into THIS field's own input ──────────────────────────────────
+    await typeIntoInput(searchInput, rawValue);
+
+    // ── 4. Wait until THIS field's own menu contains the target option ───────
+    let matchedOpts = null;
+    for (let w = 0; w < 80; w++) {
+      ownMenu = getOwnMenu() || ownMenu;
+      const all = getVisibleOpts(ownMenu && ownMenu.offsetParent !== null ? ownMenu : null);
+      const matched = all.filter(o => norm(o.textContent).includes(normVal));
+      if (matched.length > 0) {
+        matchedOpts = matched;
+        break;
       }
       await sleep(30);
     }
-    if (!searchInput) {
-      target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
-      return false;
-    }
 
-    // ── 3. Focus the input (menu already open from step 2 poll) ──────────────
-    searchInput.focus();
-    searchInput.click();
-
-    // ── 4. Type the search value ──────────────────────────────────────────────
-    await typeIntoInput(searchInput, rawValue);
-
-    // ── 5. Poll until options matching our search term appear ─────────────────
-    // This is the key guard: only proceed when the dropdown has FILTERED to our value.
-    // Handles slow server-side search (entity dropdowns that fetch from API).
-    let matchedOpts = null;
-    for (let w = 0; w < 60; w++) {  // up to ~3 s for slow API lookups
-      const all = getVisibleOpts();
-      const matched = all.filter(o => norm(o.textContent).includes(normVal));
-      if (matched.length > 0) { matchedOpts = matched; break; }
-      // If a loading spinner is visible, keep waiting
-      await sleep(30);
-    }
-
-    // ── 6. Click best match ───────────────────────────────────────────────────
+    // ── 5. Click best match, then verify the control value really changed ────
     let clicked = false;
     if (matchedOpts && matchedOpts.length > 0) {
       const pick =
-        matchedOpts.find(o => norm(o.textContent) === normVal)    ||
+        matchedOpts.find(o => norm(o.textContent) === normVal) ||
         matchedOpts.find(o => norm(o.textContent).startsWith(normVal)) ||
         matchedOpts[0];
       if (pick) {
         await clickOption(pick);
-        clicked = true;
-        // clickOption polled menu-gone + fired Tab/blur — value is committed
+
+        // Wait until this control itself shows the new selected label.
+        for (let w = 0; w < 50; w++) {
+          const currentVal = getControlValue(selectRoot);
+          if (currentVal === normVal || currentVal.includes(normVal)) {
+            clicked = true;
+            break;
+          }
+          await sleep(30);
+        }
+
+        // Finalize by blurring THIS field only, not by tabbing to the next field.
+        searchInput.blur();
+        await sleep(40);
       }
     }
 
-    // ── 8. Close on failure ───────────────────────────────────────────────────
+    // ── 6. Close on failure ───────────────────────────────────────────────────
     if (!clicked) {
       try {
         searchInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape', keyCode: 27 }));
         searchInput.blur();
-        await sleep(10);
+        await sleep(20);
       } catch (_) {}
     }
 
