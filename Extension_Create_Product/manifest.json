@@ -1,11 +1,23 @@
 ﻿{
   "manifest_version": 3,
-  "name": "Product Lookup + Autofill",
+  "name": "Create Product",
   "version": "2.1.0",
   "description": "Search product data and autofill product form with safe dropdown handling",
+  "icons": {
+    "16": "icon-128.png",
+    "32": "icon-128.png",
+    "48": "icon-128.png",
+    "128": "icon-128.png"
+  },
   "action": {
-    "default_title": "Product Lookup + Autofill",
-    "default_popup": "popup.html"
+    "default_title": "Create Product",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon-128.png",
+      "32": "icon-128.png",
+      "48": "icon-128.png",
+      "128": "icon-128.png"
+    }
   },
   "background": {
     "service_worker": "background.js"

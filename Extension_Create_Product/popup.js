@@ -1128,7 +1128,7 @@ async function __injectedFill(fillItems) {
 
   // Grab OS focus so click/keyboard events register correctly
   window.focus();
-  await sleep(80);
+  await sleep(20);
 
   /* ── Set value on a React-controlled input or select ──────────────────────── */
   // React overrides the native setter; we must call it via the prototype descriptor
@@ -1188,7 +1188,7 @@ async function __injectedFill(fillItems) {
       const maxWait = 3000;
       const start   = Date.now();
       while (Date.now() - start < maxWait) {
-        await sleep(10);
+        await sleep(6);
         const anyVisible = [
           ...document.querySelectorAll('[class*="-option"], [class*="__option"], [role="option"]'),
         ].some(o => o.offsetParent !== null);
@@ -1219,7 +1219,7 @@ async function __injectedFill(fillItems) {
       input.dispatchEvent(new Event('input',  { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ch }));
-      await sleep(5); // 5ms per char — triggers debounced filter
+      await sleep(2); // 2ms per char — still triggers debounced filter
     }
     // One final input event to prod any debounced listeners
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1282,9 +1282,9 @@ async function __injectedFill(fillItems) {
         prev.blur();
       }
       document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      for (let w = 0; w < 40; w++) {
+      for (let w = 0; w < 25; w++) {
         if (!getVisibleOpts().length) break;
-        await sleep(15);
+        await sleep(8);
       }
     }
 
@@ -1301,22 +1301,22 @@ async function __injectedFill(fillItems) {
     // ── 2. Wait for THIS dropdown's input + menu ─────────────────────────────
     let searchInput = null;
     let ownMenu = null;
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 30; i++) {
       ownMenu = getOwnMenu();
       searchInput = selectRoot.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])')
                  || target.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])');
       if (searchInput && ownMenu && ownMenu.offsetParent !== null) break;
-      await sleep(30);
+      await sleep(15);
     }
     if (!searchInput) return false;
 
     // Some react-select v1 menus render lazily after focus.
     searchInput.focus();
     searchInput.click();
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 12; i++) {
       ownMenu = getOwnMenu();
       if (ownMenu && ownMenu.offsetParent !== null) break;
-      await sleep(20);
+      await sleep(10);
     }
 
     // ── 3. Type into THIS field's own input ──────────────────────────────────
@@ -1324,7 +1324,7 @@ async function __injectedFill(fillItems) {
 
     // ── 4. Wait until THIS field's own menu contains the target option ───────
     let matchedOpts = null;
-    for (let w = 0; w < 80; w++) {
+    for (let w = 0; w < 100; w++) {
       ownMenu = getOwnMenu() || ownMenu;
       const all = getVisibleOpts(ownMenu && ownMenu.offsetParent !== null ? ownMenu : null);
       const matched = all.filter(o => norm(o.textContent).includes(normVal));
@@ -1332,7 +1332,7 @@ async function __injectedFill(fillItems) {
         matchedOpts = matched;
         break;
       }
-      await sleep(30);
+      await sleep(15);
     }
 
     // ── 5. Click best match, then verify the control value really changed ────
@@ -1346,18 +1346,18 @@ async function __injectedFill(fillItems) {
         await clickOption(pick);
 
         // Wait until this control itself shows the new selected label.
-        for (let w = 0; w < 50; w++) {
+        for (let w = 0; w < 35; w++) {
           const currentVal = getControlValue(selectRoot);
           if (currentVal === normVal || currentVal.includes(normVal)) {
             clicked = true;
             break;
           }
-          await sleep(30);
+          await sleep(15);
         }
 
         // Finalize by blurring THIS field only, not by tabbing to the next field.
         searchInput.blur();
-        await sleep(40);
+        await sleep(15);
       }
     }
 
@@ -1366,7 +1366,7 @@ async function __injectedFill(fillItems) {
       try {
         searchInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape', keyCode: 27 }));
         searchInput.blur();
-        await sleep(20);
+        await sleep(8);
       } catch (_) {}
     }
 
@@ -1524,7 +1524,7 @@ async function __injectedFill(fillItems) {
         const container = findByDs(dsKey);
         if (container) {
           container.click();
-          await sleep(100);
+          await sleep(40);
           const normVal = norm(value);
           const opts = [
             ...document.querySelectorAll('[role="option"]'),
@@ -1541,7 +1541,7 @@ async function __injectedFill(fillItems) {
             ok = true;
           } else {
             container.click(); // close without selecting
-            await sleep(30);
+            await sleep(12);
           }
         }
 
@@ -1613,7 +1613,7 @@ async function __injectedFill(fillItems) {
                             || container;
             triggerBtn.click();
             for (let w = 0; w < 20; w++) {
-              await sleep(80);
+              await sleep(30);
               const menu = findPopupMenu();
               if (menu) return menu;
             }
@@ -1668,9 +1668,9 @@ async function __injectedFill(fillItems) {
                 // Only click if NOT already checked — clicking a checked box would DESELECT it
                 if (!cb.checked) {
                   cb.click();
-                  await sleep(120); // wait for React to process the tick
+                  await sleep(20); // wait for React to process the tick
                 } else {
-                  await sleep(20); // already correct, minimal pause
+                  await sleep(8); // already correct, minimal pause
                 }
               } else {
                 // No checkbox found — check if the item appears selected before clicking
@@ -1684,9 +1684,9 @@ async function __injectedFill(fillItems) {
                   opt.dispatchEvent(new PointerEvent('pointerup', ev));
                   opt.dispatchEvent(new MouseEvent('mouseup', ev));
                   opt.dispatchEvent(new MouseEvent('click', ev));
-                  await sleep(300);
+                  await sleep(120);
                 } else {
-                  await sleep(50);
+                  await sleep(20);
                 }
               }
               anyOk = true;
@@ -1701,13 +1701,13 @@ async function __injectedFill(fillItems) {
               document.elementFromPoint(clickX, clickY)?.dispatchEvent(
                 new MouseEvent('mousedown', { bubbles: true, clientX: clickX, clientY: clickY })
               );
-              await sleep(60);
+              await sleep(25);
 
               // Fallback: Escape if still open
               if (findPopupMenu()?.offsetParent !== null) {
                 document.dispatchEvent(new KeyboardEvent('keydown',
                   { bubbles: true, key: 'Escape', keyCode: 27 }));
-                await sleep(80);
+                await sleep(30);
               }
               ok = true;
             }
@@ -1742,18 +1742,18 @@ async function __injectedFill(fillItems) {
                  || candidates[0];
             break;
           }
-          await sleep(100);
+          await sleep(40);
         }
 
         if (tabEl) {
           tabEl.scrollIntoView({ block: 'nearest' });
           tabEl.click();
-          await sleep(100);
+          await sleep(40);
           // Poll until the tab becomes active.
           // These tabs use class "tab-section" (active) vs "tab-section-disabled" (inactive).
           // Also support aria-selected / active / selected for generic tabs.
           for (let w = 0; w < 30; w++) {
-            await sleep(100);
+            await sleep(40);
             const active = tabEl.getAttribute('aria-selected') === 'true'
               || tabEl.classList.contains('active')
               || norm(tabEl.className).includes('active')
@@ -1762,7 +1762,7 @@ async function __injectedFill(fillItems) {
               || (tabEl.classList.contains('tab-section') && !tabEl.classList.contains('tab-section-disabled'));
             if (active) break;
           }
-          await sleep(150); // buffer for React to render tab content
+          await sleep(60); // shorter buffer for React to render tab content
           ok = true;
         }
 
@@ -1773,7 +1773,7 @@ async function __injectedFill(fillItems) {
         const wrapper = document.getElementById(dsKey) || findByDs(dsKey);
         if (wrapper) {
           wrapper.click();
-          await sleep(50);
+          await sleep(20);
           const dateInput = (wrapper.tagName === 'INPUT')
             ? wrapper
             : wrapper.querySelector('input')
@@ -1830,7 +1830,7 @@ async function __injectedFill(fillItems) {
               input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
               input.blur();
               filledCount++;
-              await sleep(5); // small gap between fills
+              await sleep(2); // small gap between fills
             }
           }
           ok = filledCount > 0;
@@ -1863,15 +1863,15 @@ async function __injectedFill(fillItems) {
         // Require the element to be VISIBLE (not inside display:none)
         // This is critical for pattern tabs: Miền Bắc section is display:none until its tab is clicked
         if (el && el.offsetParent !== null) break;
-        await sleep(80);
+        await sleep(25);
       }
       // Extra buffer after the first element appears so that ALL sibling fields
       // (Core Item, Supplier, MOQ etc.) also finish rendering.
-      await sleep(200);
+      await sleep(60);
     } else if (item.waitAfterMs) {
       await sleep(item.waitAfterMs);
     } else if (type === 'react-select') {
-      await sleep(80); // let React flush state before next field's step 0
+      await sleep(20); // let React flush state before next field's step 0
     } else if (isDropdown) {
       // pattern types: internal timing handles it
     }
