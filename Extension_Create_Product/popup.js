@@ -114,7 +114,9 @@ const TAB3_FIELDS = new Set([
   'Minimum Order Quantity', 'Maximum Order Quantity',
 ]);
 const TAB4_FIELDS = new Set([
-  'Base - RSP', 'Uom 1 - RSP', 'Uom 2 - RSP', 'Uom 3 - RSP', 'Uom 4 - RSP',
+  'Base - RSP',
+  'Uom 1 - RSP', 'Uom 2 - RSP', 'Uom 3 - RSP', 'Uom 4 - RSP',
+  'UOM 1 - RSP', 'UOM 2 - RSP', 'UOM 3 - RSP', 'UOM 4 - RSP',
 ]);
 function getTabForKey(key) {
   if (TAB2_FIELDS.has(key)) return 2;
@@ -125,13 +127,17 @@ function getTabForKey(key) {
 
 // ── Field transformation ──────────────────────────────────────────────────────
 // Fields that contain "Miền Nam: X\nMiền Bắc: Y" or just one region (long text)
-const REGION_FIELDS = new Set(['Logistics Group', 'CDC Shipping Limitation', 'Shipping Limitation']);
+const REGION_FIELDS = new Set(['Logistics Group', 'Supplier Name HQ', 'CDC Shipping Limitation', 'Shipping Limitation']);
 
 // Fields with "Miền Nam: Yes/No, Miền Bắc: Yes/No" inline comma-separated
 const BOOL_REGION_FIELDS = new Set(['Core Item', 'Order-able', 'Return-able', 'Refill-able', 'Write-off-able', 'Price-Tag-Issue']);
 
 // Fields that contain "KEY: VALUE\nKEY: VALUE" tier lists
-const TIER_FIELDS   = new Set(['Base - RSP', 'Uom 1 - RSP', 'Uom 2 - RSP', 'Uom 3 - RSP', 'Uom 4 - RSP']);
+const TIER_FIELDS   = new Set([
+  'Base - RSP',
+  'Uom 1 - RSP', 'Uom 2 - RSP', 'Uom 3 - RSP', 'Uom 4 - RSP',
+  'UOM 1 - RSP', 'UOM 2 - RSP', 'UOM 3 - RSP', 'UOM 4 - RSP',
+]);
 
 // Fields containing "KEY: VALUE" structured text (UOM info already has sub-structure)
 const KV_FIELDS     = new Set(['UOM Information']);
@@ -696,6 +702,9 @@ function getRegionLogistics(rawVal, regionName) {
 function getRegionBool(fieldKey, rawVal, regionName) {
   return extractFieldForRegion(fieldKey, rawVal, regionName);
 }
+function getRegionSupplier(rawVal, regionName) {
+  return extractFieldForRegion('Supplier Name HQ', rawVal, regionName);
+}
 
 // Parse UOM Information key:value lines
 function parseUomInfo(raw) {
@@ -731,9 +740,120 @@ function parseUomInfo(raw) {
   return out;
 }
 
+function parseDimension(raw) {
+  const parts = String(raw || '').split(/\s*[xX×]\s*/).map(s => s.trim()).filter(Boolean);
+  if (parts.length < 3) return {};
+  return { h: parts[0], w: parts[1], l: parts[2] };
+}
+
+function parseWeight(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return {};
+  const m = t.match(/^([\d.]+)\s*([a-zA-Z]+)/);
+  if (!m) return {};
+  return { wtVal: m[1], wtUnit: m[2].toLowerCase() };
+}
+
+function normUpc(s) {
+  return String(s || '').replace(/[^0-9A-Za-z]/g, '').trim();
+}
+
+function normTierKey(s) {
+  return String(s || '')
+    .replace(/\s+/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, '');
+}
+
+function getRspColumnIndex(colName) {
+  const raw = String(colName || '').trim();
+  if (!raw) return null;
+
+  if (/^base\s*-\s*rsp$/i.test(raw)) return 0;
+
+  const m = raw.match(/^uom\s*(\d+)\s*-\s*rsp$/i);
+  if (!m) return null;
+
+  const idx = Number(m[1]);
+  return Number.isFinite(idx) ? idx : null;
+}
+
+function resolveUomBarcode(uomMap, idx) {
+  if (!uomMap) return '';
+  const candidates = idx === 0
+    ? ['Base Barcode', 'BaseBarcode', 'UPC Base Unit', 'Base UPC']
+    : [
+        `Barcode UOM ${idx}`,
+        `UOM ${idx} Barcode`,
+        `Uom ${idx} Barcode`,
+        `UPC UOM ${idx}`,
+        `UOM ${idx} UPC`,
+      ];
+
+  for (const key of candidates) {
+    const v = uomMap[key];
+    if (String(v || '').trim()) return String(v).trim();
+  }
+
+  // Flexible fallback for inconsistent key naming in UOM Information.
+  const entries = Object.entries(uomMap);
+  if (idx === 0) {
+    const foundBase = entries.find(([k, v]) =>
+      /(barcode|upc)/i.test(k)
+      && /base/i.test(k)
+      && String(v || '').trim()
+    );
+    if (foundBase) return String(foundBase[1]).trim();
+  } else {
+    const idxRx = new RegExp(`(?:^|\\D)${idx}(?:\\D|$)`, 'i');
+    const foundUom = entries.find(([k, v]) =>
+      /(barcode|upc)/i.test(k)
+      && /uom/i.test(k)
+      && idxRx.test(k)
+      && String(v || '').trim()
+    );
+    if (foundUom) return String(foundUom[1]).trim();
+  }
+
+  return '';
+}
+
+function getExtraUoms(uomMap) {
+  const idxSet = new Set();
+  for (const k of Object.keys(uomMap || {})) {
+    const m = /^UOM\s+(\d+)(?:\s|$)/i.exec(k.trim());
+    if (m) idxSet.add(Number(m[1]));
+  }
+
+  const sorted = [...idxSet]
+    .filter(n => Number.isFinite(n) && n > 0)
+    .sort((a, b) => a - b)
+    .map((n, i) => {
+      const dim = parseDimension(uomMap[`UOM ${n} Dimension`]);
+      const wt = parseWeight(uomMap[`UOM ${n} Weight`]);
+      const barcodeKey = `Barcode UOM ${n}`;
+      return {
+        sourceN: n,
+        formIdx: i + 1,
+        name: uomMap[`UOM ${n}`] || '',
+        multiple: uomMap[`UOM ${n} Multiple`] || '',
+        barcode: barcodeKey in uomBarcodeOverrides ? uomBarcodeOverrides[barcodeKey] : (uomMap[barcodeKey] || ''),
+        wtVal: wt.wtVal,
+        wtUnit: wt.wtUnit,
+        h: dim.h,
+        w: dim.w,
+        l: dim.l,
+      };
+    });
+
+  return sorted;
+}
+
 // Allow "0" and 0 — only exclude undefined/null/empty-string/empty-array
 function hasValue(d) {
   if (d.type === 'pattern-tab-click') return true; // always include tab-switch steps
+  if (d.type === 'click-add-uom') return true; // action-only step (no value payload)
+  if (d.type === 'click-tab-ds') return true; // action-only step (no value payload)
   if (d.type === 'retail-price-table') return typeof d.value === 'object' && d.value !== null && Object.keys(d.value).length > 0;
   if (d.value === undefined || d.value === null) return false;
   if (Array.isArray(d.value)) return d.value.length > 0;
@@ -856,7 +976,7 @@ function prepareFillData(tabNum) {
 
   if (tabNum === 2) {
     const uom = parseUomInfo(row['UOM Information'] || '');
-    return [
+    const items = [
       // "Base UOM: Cái" → Base UOM Description VN (native <select>)
       // Options use Vietnamese names: Cái, Hộp, Gói, etc.
       { label: 'Base UOM Description VN',
@@ -891,7 +1011,57 @@ function prepareFillData(tabNum) {
         dsKey: 'input-select-product_uoms.0product_content_unit', type: 'select-native',
         value: uom._wtUnit },
 
-    ].filter(hasValue);
+    ];
+
+    const extraUoms = getExtraUoms(uom);
+    extraUoms.forEach((eu, i) => {
+      // First non-base UOM block already exists; from the second onward we must add a new block.
+      if (i > 0) {
+        items.push({
+          label: `Add UOM block ${eu.sourceN}`,
+          type: 'click-add-uom',
+          waitForDs: `input-select-product_uoms.${eu.formIdx}uom`,
+          waitAfterMs: 5000,
+        });
+      }
+
+      items.push(
+        { label: `UOM ${eu.sourceN} Description VN`,
+          dsKey: `input-select-product_uoms.${eu.formIdx}uom`, type: 'select-native',
+          value: eu.name },
+
+        { label: `UOM ${eu.sourceN} size`,
+          dsKey: `input-text-input-number-product_uoms.${eu.formIdx}uom_size`, type: 'input',
+          value: eu.multiple },
+
+        { label: `UOM ${eu.sourceN} UPC`,
+          type: 'uom-upc-by-index',
+          formIdx: eu.formIdx,
+          value: eu.barcode },
+
+        { label: `UOM ${eu.sourceN} Height (mm)`,
+          dsKey: `input-text-input-number-product_uoms.${eu.formIdx}height`, type: 'input',
+          value: eu.h },
+
+        { label: `UOM ${eu.sourceN} Width (mm)`,
+          dsKey: `input-text-input-number-product_uoms.${eu.formIdx}width`, type: 'input',
+          value: eu.w },
+
+        { label: `UOM ${eu.sourceN} Length (mm)`,
+          dsKey: `input-text-input-number-product_uoms.${eu.formIdx}length`, type: 'input',
+          value: eu.l },
+
+        { label: `UOM ${eu.sourceN} Product Content value`,
+          dsKey: `input-text-input-number-product_uoms.${eu.formIdx}product_net_quantity_of_content`, type: 'input',
+          value: eu.wtVal },
+
+        { label: `UOM ${eu.sourceN} Product Content unit`,
+          dsKey: `input-select-product_uoms.${eu.formIdx}product_content_unit`, type: 'select-native',
+          value: eu.wtUnit },
+      );
+    });
+
+    return items.filter(hasValue);
   }
 
   if (tabNum === 3) {
@@ -953,6 +1123,7 @@ function prepareFillData(tabNum) {
     // Uses expandField-based helpers so values EXACTLY match what's shown in popup display.
     function buildPatternFields(regionName, idx) {
       const logGroup   = getRegionLogistics(row['Logistics Group'], regionName);
+      const supplier   = getRegionSupplier(row['Supplier Name HQ'], regionName);
       const coreItem   = getRegionBool('Core Item',    row['Core Item'],    regionName);
       const orderable  = getRegionBool('Order-able',   row['Order-able'],   regionName);
       const returnable = getRegionBool('Return-able',  row['Return-able'],  regionName);
@@ -991,7 +1162,7 @@ function prepareFillData(tabNum) {
 
         { label: `Supplier ${tag}`,
           dsKey: `select-entity-dropdown-pattern_mapping_infos.${idx}.supplier_mapping_info.0supplier_name`,
-          type: 'react-select', value: row['Supplier Name HQ'] },
+          type: 'react-select', value: supplier },
 
         { label: `Fulfillment Method ${tag}`,
           dsKey: `input-text-pattern_mapping_infos.${idx}.supplier_mapping_info.0fulfillment_method`,
@@ -1082,10 +1253,24 @@ function prepareFillData(tabNum) {
     //   "HCM_T5: 98000\nHCM_T6: 98000\n..."
     // expandField() parses this into { key: 'Base - RSP · HCM_T5', value: '98000', type: 'tier' }
     // UPC order on the form matches column order: Base → Uom 1 → Uom 2 → ...
-    const uomPriceCols = ['Base - RSP', 'Uom 1 - RSP', 'Uom 2 - RSP', 'Uom 3 - RSP', 'Uom 4 - RSP'];
-    const tiers = {};
+    const uomPriceCols = Object.keys(row)
+      .map(colName => ({ colName, upcIdx: getRspColumnIndex(colName) }))
+      .filter(x => x.upcIdx !== null)
+      .sort((a, b) => a.upcIdx - b.upcIdx);
+    const tiersByIndex = {};
+    const tiersByUpc = {};
 
-    uomPriceCols.forEach((colName, upcIdx) => {
+    const uom = parseUomInfo(row['UOM Information'] || '');
+    const upcByIndex = {};
+    for (let idx = 0; idx <= 4; idx++) {
+      const overrideKey = idx === 0 ? 'Base Barcode' : `Barcode UOM ${idx}`;
+      const raw = (overrideKey in uomBarcodeOverrides)
+        ? uomBarcodeOverrides[overrideKey]
+        : resolveUomBarcode(uom, idx);
+      upcByIndex[idx] = normUpc(raw);
+    }
+
+    uomPriceCols.forEach(({ colName, upcIdx }) => {
       const rawVal = row[colName];
       if (!rawVal) return;
       const items = expandField(colName, rawVal);
@@ -1093,22 +1278,33 @@ function prepareFillData(tabNum) {
         if (it.type !== 'tier') continue;
         // key = "Base - RSP · HCM_T5"  →  tierName = "HCM_T5"
         const sep = it.key.indexOf(' \u00b7 ');
-        const tierName = sep !== -1 ? it.key.slice(sep + 3).trim() : null;
+        const tierNameRaw = sep !== -1 ? it.key.slice(sep + 3).trim() : null;
+        const tierName = normTierKey(tierNameRaw);
         if (!tierName) continue;
         const price = String(it.value).replace(/,/g, '').trim();
         if (!price) continue;
-        if (!tiers[tierName]) tiers[tierName] = [];
-        tiers[tierName][upcIdx] = price;
+        if (!tiersByIndex[tierName]) tiersByIndex[tierName] = [];
+        tiersByIndex[tierName][upcIdx] = price;
+
+        const upc = upcByIndex[upcIdx];
+        if (upc) {
+          if (!tiersByUpc[tierName]) tiersByUpc[tierName] = {};
+          tiersByUpc[tierName][upc] = price;
+        }
       }
     });
 
-    if (!Object.keys(tiers).length) return [];
+    if (!Object.keys(tiersByIndex).length) return [];
 
     return [{
       label: 'Retail Prices (all tiers)',
       type:  'retail-price-table',
       dsKey: 'datatable-product-uom-mapping',
-      value: tiers,  // { 'HCM_T5': ['98000', uom1Price], 'INTL': ['95000'], ... }
+      value: {
+        byIndex: tiersByIndex,
+        byUpc: tiersByUpc,
+        upcByIndex,
+      },
     }];
   }
 
@@ -1155,6 +1351,21 @@ async function __injectedFill(fillItems) {
     return String(s ?? '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+
+  // MUST live inside __injectedFill — outer popup scope is NOT accessible here.
+  // Normalises tier keys for table lookups. e.g. "HCM_T5 " → "HCM_T5"
+  function normTierKey(s) {
+    return String(s || '')
+      .replace(/\s+/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]/g, '');
+  }
+
+  // Strips the S/T letter before trailing digits so spreadsheet keys like
+  // "HCM_S5" match form tier headers like "HCM_T5".
+  function normTierForMatch(k) {
+    return String(k || '').replace(/[ST](\d+)$/, '$1');
   }
 
   /* ── Strip surrounding JSON-style quotes from option values ──────────────── */
@@ -1793,47 +2004,192 @@ async function __injectedFill(fillItems) {
       //   • table-group-header rows mark the start of each tier section
       //   • subsequent data rows are UPCs in that tier (1st = Base, 2nd = Uom 1, etc.)
       } else if (type === 'retail-price-table') {
-        const priceData = item.value; // the original object (not string-coerced)
-        const table = findByDs(dsKey);
-        if (table && priceData && typeof priceData === 'object') {
-          const trs = [...table.querySelectorAll('tbody tr')];
+        const payload = item.value; // the original object (not string-coerced)
+        const priceByIndex = payload?.byIndex || payload || {};
+        const priceByUpc = payload?.byUpc || {};
+        const upcByIndex = payload?.upcByIndex || {};
+        let table = findByDs(dsKey)
+          || document.querySelector('[data-selector*="product-uom-mapping"]')
+          || document.querySelector('[data-selector*="uom-mapping"]');
+
+        // Fallback: find a table-like block by content when data-selector differs.
+        if (!table) {
+          const tables = [...document.querySelectorAll('table')];
+          table = tables.find(t => {
+            const txt = norm(t.textContent || '');
+            return txt.includes('uom') && txt.includes('price') && txt.includes('retail price (+vat)');
+          }) || null;
+        }
+
+        if (table && priceByIndex && typeof priceByIndex === 'object') {
+          const trs = [...table.querySelectorAll('tr')].filter(r => r.offsetParent !== null);
           let currentTier = null;
           let upcIndexInTier = 0;
           let filledCount = 0;
 
+          const normUpcInPage = s => String(s || '').replace(/[^0-9A-Za-z]/g, '').trim();
+
+          const findTierKey = (obj, key) => {
+            if (!obj || !key) return null;
+            if (Object.prototype.hasOwnProperty.call(obj, key)) return key;
+            const keys = Object.keys(obj);
+            // Exact substring match (covers INTL, LA, BD_T7, etc.)
+            const sub = keys.find(k => k.includes(key) || key.includes(k));
+            if (sub) return sub;
+            // Fuzzy: strip S/T before trailing digits (HCM_S5 ↔ HCM_T5)
+            const normKey = normTierForMatch(key);
+            return keys.find(k => normTierForMatch(k) === normKey) || null;
+          };
+
+          const findUpcIndex = upc => {
+            if (!upc) return -1;
+            const entries = Object.entries(upcByIndex || {});
+            const hit = entries.find(([, val]) => normUpcInPage(val) === upc);
+            return hit ? Number(hit[0]) : -1;
+          };
+
+          function extractUpcFromRow(tr) {
+            if (!tr) return '';
+
+            // Preferred: read the dedicated UPC line in the UOM cell.
+            const upcBold = [...tr.querySelectorAll('b')].find(b => /UPC\s*:/i.test(b.textContent || ''));
+            const upcLine = upcBold?.parentElement?.textContent || '';
+            let m = String(upcLine).match(/UPC\s*:\s*([0-9]{8,20})/i);
+            if (m) return normUpcInPage(m[1]);
+
+            // Fallback: try anywhere in row text but capture digits only.
+            m = String(tr.textContent || '').match(/UPC\s*:\s*([0-9]{8,20})/i);
+            if (!m) return '';
+            return normUpcInPage(m[1]);
+          }
+
+          function isTierHeaderRow(tr) {
+            if (!tr) return false;
+            if (tr.classList.contains('table-group-header')) return true;
+            const txt = String(tr.textContent || '').trim();
+            return /^[A-Z]{2,}[_-]T\d+\s*$/i.test(txt);
+          }
+
+          function pickVatInputInRow(tr) {
+            const inputs = [...tr.querySelectorAll('input')]
+              .filter(inp => inp.offsetParent !== null && !inp.disabled);
+            if (!inputs.length) return null;
+            // In this form, +VAT input is editable and appears after -VAT.
+            return inputs[inputs.length - 1];
+          }
+
+          function getNthDefinedPrice(arrLike, n) {
+            if (!Array.isArray(arrLike) || n < 0) return undefined;
+            const defined = [];
+            for (let i = 0; i < arrLike.length; i++) {
+              const v = arrLike[i];
+              if (v == null || v === '') continue;
+              defined.push(v);
+            }
+            return defined[n];
+          }
+
           for (const tr of trs) {
-            if (tr.classList.contains('table-group-header')) {
-              currentTier = tr.querySelector('th')?.textContent?.trim() || null;
+            if (isTierHeaderRow(tr)) {
+              const rawTier = tr.querySelector('th')?.textContent?.trim() || null;
+              currentTier = normTierKey(rawTier || tr.textContent || '');
               upcIndexInTier = 0;
               continue;
             }
             if (!currentTier) continue;
 
-            const tierPrices = priceData[currentTier];
-            const price = tierPrices?.[upcIndexInTier];
+            // Only process actual UOM rows.
+            if (!/UPC\s*:/i.test(tr.textContent || '')) continue;
+
+            const tierKeyIdx = findTierKey(priceByIndex, currentTier);
+            const tierKeyUpc = findTierKey(priceByUpc, currentTier);
+            const tierByIdx = tierKeyIdx ? (priceByIndex[tierKeyIdx] || []) : [];
+            const tierByUpc = tierKeyUpc ? (priceByUpc[tierKeyUpc] || {}) : {};
+            const rowUpc = extractUpcFromRow(tr);
+            let price = rowUpc ? tierByUpc[rowUpc] : undefined;
+
+            // UPC -> index fallback (robust when barcode key names are inconsistent).
+            if ((price == null || price === '') && rowUpc) {
+              const idxFromUpc = findUpcIndex(rowUpc);
+              if (idxFromUpc >= 0) price = tierByIdx?.[idxFromUpc];
+            }
+
+            // Fallback for rows where UPC text is missing/unparseable.
+            if (price == null || price === '') price = tierByIdx?.[upcIndexInTier];
+
+            // Sparse-index fallback: supports datasets like Base + Uom 2 (missing Uom 1).
+            if (price == null || price === '') {
+              price = getNthDefinedPrice(tierByIdx, upcIndexInTier);
+            }
             upcIndexInTier++;
 
             if (price == null || price === '') continue;
 
-            // The price input is in the 3rd <td> (index 2) of the data row
-            const cells = tr.querySelectorAll('td');
-            if (cells.length < 3) continue;
-            const priceCell = cells[2];
             const input =
-              priceCell.querySelector('input[data-selector*="retail_selling_price_with_tax"]') ||
-              priceCell.querySelector('input');
+              tr.querySelector('input[data-selector*="retail_selling_price_with_tax"]') ||
+              pickVatInputInRow(tr);
 
             if (input) {
+              const cleanPrice = String(price).replace(/,/g, '').trim();
+              if (!cleanPrice) continue;
+
               input.focus();
-              input.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-              setNativeValue(input, String(price));
-              input.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+              input.dispatchEvent(new Event('focus', { bubbles: true }));
+              setNativeValue(input, cleanPrice);
+              // Some numeric React controls commit value on keyboard/blur sequence.
+              input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 }));
+              input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 }));
+              input.dispatchEvent(new Event('blur', { bubbles: true }));
               input.blur();
               filledCount++;
-              await sleep(2); // small gap between fills
+              await sleep(35); // allow React form-state to flush before next row
             }
           }
           ok = filledCount > 0;
+        }
+
+      /* ── Add UOM row button (Tab 2) ───────────────────────────────────── */
+      } else if (type === 'click-add-uom') {
+        const btn = [...document.querySelectorAll('button, .btn, [role="button"], a')]
+          .find(el => el.offsetParent !== null && norm(el.textContent).includes('add uom'));
+        if (btn) {
+          btn.scrollIntoView({ block: 'nearest' });
+          btn.click();
+          ok = true;
+        }
+
+      /* ── Generic tab click by data-selector ────────────────────────────── */
+      } else if (type === 'click-tab-ds') {
+        const tabEl = findByDs(dsKey);
+        if (tabEl) {
+          tabEl.scrollIntoView({ block: 'nearest' });
+          tabEl.click();
+          ok = true;
+        }
+
+      /* ── Fill UPC input by UOM block index (Tab 2) ───────────────────── */
+      } else if (type === 'uom-upc-by-index') {
+        const idx = Number(item.formIdx);
+        const boxes = [...document.querySelectorAll('.box.box-info')];
+        const box = boxes.find(b => b.querySelector(`[data-selector="input-select-product_uoms.${idx}uom"]`));
+        if (box) {
+          let input = null;
+
+          const upcField = [...box.querySelectorAll('[data-selector^="field-"]')]
+            .find(el => norm(el.textContent).includes('upc'));
+          if (upcField) input = upcField.querySelector('input:not([type="hidden"])');
+
+          if (!input) {
+            const lbl = [...box.querySelectorAll('label')].find(l => norm(l.textContent).includes('upc'));
+            input = lbl?.closest('.form-group')?.querySelector('input:not([type="hidden"])') || null;
+          }
+
+          if (input) {
+            input.focus();
+            setNativeValue(input, String(value));
+            input.blur();
+            ok = true;
+          }
         }
       }
 
@@ -1914,7 +2270,20 @@ async function restoreLastFillResult() {
 
 // Get the active form tab (the tab behind the popup in any normal browser window)
 async function getFormTab() {
-  // Query active tabs in normal windows — excludes popup/panel windows
+  // Strategy: find the most-recently-focused normal window, then get its active tab.
+  // chrome.tabs.query({ active: true }) returns one tab PER window, so if the user
+  // has multiple windows the old tabs[0] could return the wrong one.
+  // Using chrome.windows.getLastFocused gives us the window the user was working in
+  // right before the popup opened.
+  try {
+    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'], populate: false });
+    if (win?.id) {
+      const tabs = await chrome.tabs.query({ active: true, windowId: win.id });
+      if (tabs[0]) return tabs[0];
+    }
+  } catch (_) { /* getLastFocused may fail if no normal window exists */ }
+
+  // Fallback: original behaviour
   const tabs = await chrome.tabs.query({ active: true, windowType: 'normal' });
   return tabs[0] || null;
 }
@@ -1922,7 +2291,25 @@ async function getFormTab() {
 // Inject fill script into active tab
 async function runFill(tabNum) {
   if (!selectedRow) return;
-  const fillItems = prepareFillData(tabNum);
+  let fillItems = prepareFillData(tabNum);
+  if (tabNum === 4) {
+    fillItems = [
+      {
+        label: 'Open tab 4 retail price',
+        type: 'click-tab-ds',
+        dsKey: 'tabs-item-setUpRetailsPrice',
+        waitForDs: 'datatable-product-uom-mapping',
+        waitAfterMs: 4000,
+      },
+      ...fillItems,
+    ];
+  }
+  if (tabNum !== 4) {
+    fillItems = fillItems.filter(item =>
+      item.type !== 'retail-price-table'
+      && !(item.type === 'click-tab-ds' && item.dsKey === 'tabs-item-setUpRetailsPrice')
+    );
+  }
   if (!fillItems.length) { setStatus('Không có dữ liệu để điền.', 'err'); return; }
 
   setStatus(`Đang điền Tab ${tabNum}…`, 'busy');
@@ -1933,12 +2320,32 @@ async function runFill(tabNum) {
 
     // NOTE: We do NOT focus the browser window here — doing so would close this popup.
     // The injected script uses window.focus() inside the page to grab OS focus as needed.
-    const results = await chrome.scripting.executeScript({
+
+    // First try top-level frame only (fast path, works for most pages).
+    let results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: __injectedFill,
       args: [fillItems]
     });
-    const res = results?.[0]?.result ?? { filled: [], failed: [] };
+    let res = results?.[0]?.result ?? { filled: [], failed: [] };
+
+    // If nothing was filled but there were failures, the form may be inside an <iframe>.
+    // Re-run across ALL frames and keep whichever result filled the most fields.
+    if (res.filled.length === 0 && res.failed.length > 0) {
+      try {
+        const allResults = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          func: __injectedFill,
+          args: [fillItems]
+        });
+        // Pick the frame result with the most filled fields
+        const best = (allResults || [])
+          .map(r => r.result ?? { filled: [], failed: [] })
+          .reduce((acc, r) => r.filled.length > acc.filled.length ? r : acc,
+                  { filled: [], failed: [] });
+        if (best.filled.length > res.filled.length) res = best;
+      } catch (_) { /* allFrames not supported or tab navigated — keep top-frame result */ }
+    }
 
     // ── Tab 2 extras: also fill Tab 4 prices + download product image ──────────
     if (tabNum === 2) {
