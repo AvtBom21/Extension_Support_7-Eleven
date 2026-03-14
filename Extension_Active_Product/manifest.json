@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Manager Pro",
+  "version": "1.0",
+  "description": "Mở hàng loạt link + tự động chuyển tab",
+  "permissions": ["tabs", "alarms", "storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "open-all-links": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+O"
+      },
+      "description": "Mở tất cả link trong bảng"
+    },
+    "toggle-auto-switch": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S"
+      },
+      "description": "Bật/tắt tự động chuyển tab"
+    }
+  }
+}

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 280px; font-family: 'Segoe UI', sans-serif;
+      background: #0f0f1a; color: #e0e0ff; padding: 18px;
+    }
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+    h1 { font-size: 15px; font-weight: 700; color: #a78bfa; }
+    .subtitle { font-size: 11px; color: #6b6b9a; margin-top: 2px; }
+
+    .section-title {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+      color: #4a4a7a; margin-bottom: 8px;
+    }
+    .card {
+      background: #1a1a2e; border: 1px solid #2e2e4e;
+      border-radius: 12px; padding: 14px; margin-bottom: 12px;
+    }
+    .open-btn {
+      width: 100%; padding: 11px; border: none; border-radius: 9px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      background: linear-gradient(135deg, #0f4c75, #1b7fc4);
+      color: white; display: flex; align-items: center;
+      justify-content: center; gap: 8px; transition: all 0.2s; margin-bottom: 8px;
+    }
+    .open-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px #1b7fc455; }
+    .open-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .shortcut-hint { text-align: center; font-size: 10px; color: #4a4a7a; }
+    kbd {
+      background: #12122a; border: 1px solid #2e2e4e; border-radius: 4px;
+      padding: 1px 5px; font-size: 10px; color: #8888bb; font-family: monospace;
+    }
+
+    .flow-steps {
+      font-size: 11px; color: #6b6b9a; line-height: 1.8;
+      padding: 10px 12px; background: #12122a;
+      border-radius: 8px; border: 1px solid #1e1e38; margin-bottom: 0;
+    }
+    .flow-steps span { color: #a78bfa; font-weight: 700; }
+
+    .status-row {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #3a3a5a;
+      display: inline-block; margin-right: 6px; transition: background 0.3s;
+    }
+    .status-dot.active {
+      background: #34d399; box-shadow: 0 0 6px #34d39966; animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .status-text { font-size: 12px; color: #8888bb; }
+
+    .btn {
+      width: 100%; padding: 12px; border: none; border-radius: 9px;
+      font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-start { background: linear-gradient(135deg, #7c3aed, #a78bfa); color: white; }
+    .btn-start:hover { transform: translateY(-1px); box-shadow: 0 4px 14px #7c3aed55; }
+    .btn-stop { background: #2e2e4e; color: #f87171; border: 1px solid #3a2a4a; }
+    .btn-stop:hover { background: #3a1a2a; }
+    .divider { border: none; border-top: 1px solid #1e1e38; margin: 4px 0 12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div style="font-size:22px">⚡</div>
+    <div>
+      <h1>Tab Manager Pro</h1>
+      <div class="subtitle">Tự động duyệt sản phẩm hàng loạt</div>
+    </div>
+  </div>
+
+  <!-- Bước 1: Mở link -->
+  <div class="section-title">📂 Bước 1 — Mở link trong bảng</div>
+  <div class="card">
+    <button class="open-btn" id="openLinksBtn">🔗 Mở tất cả link hiện tại</button>
+    <div class="shortcut-hint">hoặc nhấn <kbd>Ctrl+Shift+O</kbd></div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- Bước 2: Tự động duyệt -->
+  <div class="section-title">🤖 Bước 2 — Tự động duyệt từng tab</div>
+  <div class="card">
+    <div class="flow-steps">
+      <span>①</span> Nhấn Edit<br>
+      <span>②</span> Bật MD &amp; Final Approve<br>
+      <span>③</span> Save qua từng step (1→6)<br>
+      <span>④</span> Chuyển tab kế tiếp → lặp lại
+    </div>
+  </div>
+
+  <div class="status-row">
+    <div>
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Sẵn sàng</span>
+    </div>
+  </div>
+
+  <button class="btn btn-start" id="mainBtn">▶ Bắt đầu tự động duyệt</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>
