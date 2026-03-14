@@ -36,7 +36,7 @@ function findBtn(text) {
   );
 }
 
-// Poll mỗi 400ms cho đến khi nút xuất hiện VÀ không bị disabled
+// Poll mỗi 300ms cho đến khi nút xuất hiện VÀ enabled
 function waitBtnEnabled(text, timeout = 30000) {
   return new Promise(resolve => {
     const t0 = Date.now();
@@ -46,24 +46,21 @@ function waitBtnEnabled(text, timeout = 30000) {
         resolve(b); return;
       }
       if (Date.now() - t0 > timeout) { resolve(null); return; }
-      setTimeout(poll, 400);
+      setTimeout(poll, 300);
     })();
   });
 }
 
-// Bật toggle về YES
+// Bật toggle YES
 async function enableToggle(fieldLabel) {
   const field = document.querySelector(`[data-selector="field-${fieldLabel}"]`);
   if (!field) { toast(`⚠️ Không tìm thấy: ${fieldLabel}`, "warn"); return; }
 
-  // Nếu đang là Yes rồi thì thôi
   const viewSpan = field.querySelector("span[data-selector]");
   if (viewSpan && viewSpan.textContent.trim() === "Yes") return;
 
-  // Click vào span để vào edit mode
   if (viewSpan) { viewSpan.click(); await sleep(500); }
 
-  // Thử từng loại toggle
   const tries = [
     field.querySelector(".vue-js-switch"),
     field.querySelector("[class*='toggle']"),
@@ -77,8 +74,16 @@ async function enableToggle(fieldLabel) {
 
   for (const el of tries) {
     const isOn = (el.type === "checkbox" || el.type === "radio") ? el.checked : false;
-    if (!isOn) { el.click(); await sleep(400); break; }
+    if (!isOn) { el.click(); await sleep(300); break; }
   }
+}
+
+// Lấy số step đang active (1–6)
+function getCurrentStep() {
+  const active = document.querySelector(".tab-bar li.active");
+  if (!active) return 0;
+  const m = active.textContent.trim().match(/^(\d+)\./);
+  return m ? parseInt(m[1]) : 0;
 }
 
 // ── MAIN AUTOMATION ──────────────────────────────────────
@@ -90,71 +95,78 @@ async function runAutomation() {
 
   try {
     toast("🤖 Bắt đầu tự động duyệt...", "info");
-    await sleep(600);
+    await sleep(500);
 
     // BƯỚC 1: Nhấn Edit
     const editBtn = findBtn("Edit");
     if (!editBtn) {
       toast("❌ Không tìm thấy nút Edit!", "error");
-      await sleep(1500);
+      await sleep(1000);
       chrome.runtime.sendMessage({ action: "tabAutoDone" });
       return;
     }
     toast("📝 Nhấn Edit...", "info");
     editBtn.click();
-    await sleep(1500); // chờ form mở
+    await sleep(1000);
 
     // BƯỚC 2: Bật MD Approve + Final Approve
-    toast("🔘 Bật MD Approve...", "info");
+    toast("🔘 Bật MD & Final Approve...", "info");
     await enableToggle("MD Approve");
+    await sleep(300);
+    await enableToggle("Final Approve");
     await sleep(400);
 
-    toast("🔘 Bật Final Approve...", "info");
-    await enableToggle("Final Approve");
-    await sleep(600);
-
-    // BƯỚC 3: Lặp Save qua từng step cho đến khi hết
+    // BƯỚC 3: Lặp Save qua từng step
     let step = 1;
     while (true) {
-      toast(`⏳ Chờ nút Save step ${step} enable...`, "warn");
+      toast(`⏳ Chờ Save step ${step}...`, "warn");
 
       const saveBtn = await waitBtnEnabled("Save and move to next step", 30000);
-
       if (!saveBtn) {
-        toast("⚠️ Timeout 30s — chuyển tab tiếp...", "warn");
-        await sleep(1000);
+        toast("⚠️ Timeout — chuyển tab tiếp...", "warn");
+        await sleep(300);
         break;
       }
 
-      toast(`💾 Nhấn Save step ${step}...`, "info");
+      const curStep = getCurrentStep();
+
+      if (curStep === 5) {
+        // Step 5 (Set up Online): chờ thêm 1s rồi nhấn → chuyển tab ngay
+        toast("⏱️ Step 5 — chờ 1s rồi Save...", "warn");
+        await sleep(1000);
+        saveBtn.click();
+        toast("⚡ Xong step 5 — chuyển tab ngay!", "success");
+        await sleep(200);
+        break;
+      }
+
+      // Step khác: nhấn ngay khi enable, rồi chờ trang load step tiếp
+      toast(`💾 Save step ${step}...`, "info");
       saveBtn.click();
       step++;
 
-      // Chờ trang xử lý (nút sẽ disable rồi biến mất, sau đó step mới load)
       await sleep(2500);
 
-      // Kiểm tra còn nút Save không sau khi load
       const nextSave = findBtn("Save and move to next step");
       if (!nextSave) {
-        toast(`✅ Hoàn tất! Đã lưu ${step - 1} steps. Chuyển tab...`, "success");
-        await sleep(1200);
+        toast(`✅ Hoàn tất ${step - 1} steps. Chuyển tab...`, "success");
+        await sleep(300);
         break;
       }
-      // Còn → tiếp tục vòng lặp
     }
 
     chrome.runtime.sendMessage({ action: "tabAutoDone" });
 
   } catch (err) {
     toast(`❌ Lỗi: ${err.message}`, "error");
-    await sleep(2000);
+    await sleep(1000);
     chrome.runtime.sendMessage({ action: "tabAutoDone" });
   } finally {
     __tmRunning = false;
   }
 }
 
-// ── Lắng nghe message từ background ─────────────────────
+// ── Lắng nghe từ background ──────────────────────────────
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === "startAutomate") runAutomation();
 });
