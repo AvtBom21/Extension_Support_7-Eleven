@@ -148,6 +148,22 @@ dryRunEl.addEventListener('change', saveFormValues);
   if (bulkRunning) setRunning(true);
 })();
 
+// ✅ FIX: Poll storage mỗi 1s khi popup đang mở
+// → Khi content script tự set bulkRunning=false (job xong hoặc stop),
+//   popup cập nhật UI ngay dù không nhận được LOG message
+let _pollInterval = setInterval(async () => {
+  const { bulkRunning = false } = await chrome.storage.local.get('bulkRunning');
+  const isCurrentlyRunning = !btnStart.disabled;
+  if (isCurrentlyRunning && !bulkRunning) {
+    // Content script đã tự dừng — sync UI về IDLE
+    setRunning(false);
+    setBadge('DONE', '');
+  }
+}, 1000);
+
+// Dọn dẹp interval khi popup đóng (tránh memory leak)
+window.addEventListener('unload', () => clearInterval(_pollInterval));
+
 // ─── Listen for messages from content script ─────────────────────────────────
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'LOG') return;
@@ -247,9 +263,13 @@ btnStop.addEventListener('click', async () => {
   if (!tab?.id) return;
 
   setBadge('STOPPING…', 'stopped');
+  // ✅ FIX: Reset storage ngay — không chờ content script confirm
+  await chrome.storage.local.set({ bulkRunning: false });
   try {
     await chrome.tabs.sendMessage(tab.id, { type: 'STOP' });
   } catch (_) { /* tab may have navigated */ }
+  // Đảm bảo UI về IDLE sau 500ms dù content script không reply
+  setTimeout(() => { setRunning(false); setBadge('STOPPED', 'stopped'); }, 500);
 });
 
 // ─── Clear log ────────────────────────────────────────────────────────────────

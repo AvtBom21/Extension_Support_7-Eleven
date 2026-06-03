@@ -4,10 +4,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ── Lấy tab trang web (windowTypes normal, không phải popup extension) ──
 async function getPageTab() {
-  // Lấy tất cả cửa sổ normal đang mở, lấy cái được focus gần nhất
   const windows = await chrome.windows.getAll({ windowTypes: ["normal"], populate: true });
   if (!windows.length) return null;
-  // Ưu tiên cửa sổ focused
   const focused = windows.find(w => w.focused) || windows[windows.length - 1];
   const active = focused.tabs?.find(t => t.active);
   return active || null;
@@ -15,7 +13,6 @@ async function getPageTab() {
 
 // ── Chuyển sang tab kế tiếp trong cửa sổ chứa tab đó ───
 async function switchToNextTab(fromTabId) {
-  // Lấy thông tin tab hiện tại để biết windowId
   let windowId;
   try {
     const tab = await chrome.tabs.get(fromTabId);
@@ -35,18 +32,22 @@ async function switchToNextTab(fromTabId) {
   return nextTab.id;
 }
 
-// ── Gửi startAutomate đến tab, retry nếu tab chưa load ─
-async function triggerTab(tabId, retries = 5) {
-  for (let i = 0; i < retries; i++) {
+// ✅ Thay sleep cứng bằng probe thực: ping content script đến khi respond
+// Nhanh hơn nhiều so với chờ fixed timeout khi tab đã sẵn sàng
+async function triggerTab(tabId, maxWaitMs = 15000) {
+  const t0 = Date.now();
+  const interval = 500; // probe mỗi 500ms
+
+  while (Date.now() - t0 < maxWaitMs) {
     try {
       await chrome.tabs.sendMessage(tabId, { action: "startAutomate" });
-      return; // thành công
+      return; // ✅ Thành công ngay khi content script sẵn sàng
     } catch {
-      // Content script chưa sẵn sàng — chờ rồi thử lại
-      await new Promise(r => setTimeout(r, 1500));
+      // Content script chưa ready — chờ rồi thử lại
+      await new Promise(r => setTimeout(r, interval));
     }
   }
-  console.warn("Không thể gửi startAutomate đến tab", tabId);
+  console.warn("Không thể gửi startAutomate đến tab", tabId, "sau", maxWaitMs, "ms");
 }
 
 // ── Mở tất cả link trong bảng ───────────────────────────
@@ -96,8 +97,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const fromTabId = sender.tab?.id;
       const nextTabId = await switchToNextTab(fromTabId);
       if (nextTabId) {
-        // Chờ tab load xong rồi mới trigger
-        setTimeout(() => triggerTab(nextTabId), 2000);
+        // ✅ Không sleep cứng — triggerTab tự probe đến khi tab sẵn sàng
+        // Chỉ delay nhỏ 300ms để tab kịp focus trước khi probe
+        setTimeout(() => triggerTab(nextTabId), 300);
       }
     });
     return;
@@ -111,7 +113,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "start") {
     chrome.storage.local.set({ running: true });
     sendResponse({ ok: true });
-    // Trigger tab đang active ngay lập tức
     setTimeout(async () => {
       const tab = await getPageTab();
       if (tab) triggerTab(tab.id);

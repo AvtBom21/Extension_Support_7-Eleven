@@ -170,6 +170,11 @@
       margin: 2px 2px 0 0;
     }
 
+    .skipped-list span {
+      background: #f3f4f6;
+      color: #4b5563;
+    }
+
     .tip {
       font-size: 11px;
       color: #6b7280;
@@ -222,6 +227,7 @@
       <span class="stat-label">Đã tick rồi (bỏ qua)</span>
       <span class="badge badge-gray" id="statSkip">0</span>
     </div>
+    <div class="missing-list skipped-list" id="skippedList"></div>
     <div class="stat">
       <span class="stat-label">Không tìm thấy trên trang</span>
       <span class="badge badge-red" id="statMiss">0</span>

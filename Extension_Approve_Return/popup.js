@@ -60,26 +60,48 @@ document.getElementById('btnRun').addEventListener('click', async () => {
   // Show results
   document.getElementById('statTotal').textContent = codes.length;
   document.getElementById('statOk').textContent = ticked;
-  document.getElementById('statSkip').textContent = skipped;
+  document.getElementById('statSkip').textContent = skipped.length;
   document.getElementById('statMiss').textContent = missing.length;
 
-  const missingEl = document.getElementById('missingList');
-  if (missing.length > 0) {
-    missingEl.innerHTML = '<strong>Không tìm thấy:</strong> ' +
-      missing.map(m => `<span>${m}</span>`).join('');
-    missingEl.style.display = 'block';
-  } else {
-    missingEl.style.display = 'none';
-    missingEl.innerHTML = '';
-  }
+  renderCodeList(
+    document.getElementById('skippedList'),
+    'Đã tick rồi (bỏ qua):',
+    skipped
+  );
+  renderCodeList(
+    document.getElementById('missingList'),
+    'Không tìm thấy:',
+    missing
+  );
 
   document.getElementById('resultBox').classList.add('show');
 });
 
+function renderCodeList(container, label, codes) {
+  container.innerHTML = '';
+
+  if (codes.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = `${label} `;
+  container.appendChild(title);
+
+  for (const code of codes) {
+    const item = document.createElement('span');
+    item.textContent = code;
+    container.appendChild(item);
+  }
+
+  container.style.display = 'block';
+}
+
 // This function runs INSIDE the page context
 function autoTickCheckboxes(codes) {
   let ticked = 0;
-  let skipped = 0;
+  const skipped = [];
   const missing = [];
 
   for (const code of codes) {
@@ -109,7 +131,7 @@ function autoTickCheckboxes(codes) {
 
     // Check if already checked
     if (toggleBtn.classList.contains('checked')) {
-      skipped++;
+      skipped.push(code);
       continue;
     }
 

@@ -113,10 +113,8 @@
   /**
    * Resolves when:
    *   1. The row is removed from the DOM, OR
-   *   2. The action button disappears from the row (status changed).
-   *
-   * IMPORTANT: We do NOT resolve on "row text changed" because a loading spinner
-   * briefly changes row text — that was the root cause of the premature-stop bug.
+   *   2. The action button disappears from the row (status changed), OR
+   *   3. stopFlag is set (user clicked Stop) — resolves immediately as 'stopped'.
    */
   function waitForRowProcessed(row, actionText, timeoutMs) {
     return new Promise(resolve => {
@@ -132,8 +130,10 @@
       }
 
       function check() {
-        if (!document.body.contains(row))       { finish('row-removed'); return; }
-        if (!findActionButton(row, actionText))  { finish('button-gone'); return; }
+        // ✅ FIX: Thoát ngay khi user nhấn Stop — không chờ hết 25s
+        if (stopFlag)                            { finish('stopped'); return; }
+        if (!document.body.contains(row))        { finish('row-removed'); return; }
+        if (!findActionButton(row, actionText))   { finish('button-gone'); return; }
         if (Date.now() >= deadline)              { finish('timeout'); }
       }
 
@@ -147,7 +147,7 @@
         });
       } catch (_) {}
 
-      const poll = setInterval(check, 300);
+      const poll = setInterval(check, 150);
     });
   }
 
@@ -368,6 +368,9 @@
     sendLog(`[SUMMARY] Processed: ${processed} | Timeouts: ${timeouts}`);
     if (!dryRun) disableConfirmAutoAccept();
     running = false;
+    // ✅ FIX: Tự cập nhật storage — không phụ thuộc vào popup đang mở
+    // Popup có thể đã đóng khi job xong → phải tự reset để mở lại không bị stuck RUNNING
+    try { chrome.storage.local.set({ bulkRunning: false }); } catch (_) {}
   }
 
   // ─── Message listener ────────────────────────────────────────────────────────
