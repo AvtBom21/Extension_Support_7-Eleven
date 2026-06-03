@@ -1,12 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Bulk Final Approve / Reject",
+  "name": "Update Approval Runner",
   "version": "1.0.0",
-  "description": "Sequentially bulk-approve or bulk-reject rows in a web page table.",
+  "description": "Chạy Final Approve, Final Reject, Apply Now hoặc UnFinal theo bộ lọc hàng loạt.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Bulk Approve / Reject"
+    "default_title": "Update Approval Runner",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
 
   "permissions": [

@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "Auto Fill Price Tool",
+    "name": "Regional Price Filler",
     "version": "1.0.0",
-    "description": "Công cụ tự động điền giá theo khu vực",
+    "description": "Điền giá theo vùng T6/T7/T8/T9, Intel và lọc UPC khi cần.",
     "permissions": [
         "activeTab",
         "scripting",

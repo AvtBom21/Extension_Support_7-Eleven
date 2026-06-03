@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "7-Eleven Auto Checker",
+  "name": "Feedback Check Switcher",
   "version": "1.0",
-  "description": "Tự động tick checkbox trong trang refill 7-Eleven",
+  "description": "Tick hoặc bỏ tick toàn bộ checkbox approve feedback trong vùng scroll.",
   "permissions": [
     "activeTab",
     "scripting"

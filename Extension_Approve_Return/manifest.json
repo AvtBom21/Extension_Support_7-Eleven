@@ -1,15 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "RS Auto Approver",
+  "name": "RS Return Ticker",
   "version": "1.0",
-  "description": "Tự động tick checkbox Approve/Reject cho các mã RS trong danh sách",
+  "description": "Tick checkbox Approve/Reject cho danh sách mã RS return đã nhập.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "permissions": ["activeTab", "scripting"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icon.png",
-      "48": "icon.png",
-      "128": "icon.png"
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
     }
   }
 }
